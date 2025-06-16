@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Teclado Virtual Acessível</title>
+<title>Teclado Virtual Acessível + Execução Python</title>
 <style>
 :root{
     --key-height: 100px;
@@ -22,22 +22,41 @@ body{
     padding:1rem;
 }
 
-.display{
+.display, .output{
     width:100%;
     max-width:900px;
-    min-height:120px;
+    min-height:140px;
     border:3px solid #000;
     border-radius:12px;
-    font-size:48px;
+    font-size:32px;
     line-height:1.4;
     padding:.5rem;
     box-sizing:border-box;
     background:#fff;
     color:#000;
     outline:none;
-    white-space:pre-wrap; /* mantém quebras de linha */
+    white-space:pre-wrap;
     word-wrap:break-word;
+    caret-color:#000;
 }
+
+.output{
+    border-color:#1565c0;
+    background:#e3f2fd;
+}
+
+.controls{ display:flex; gap:1rem; }
+
+.run-btn{
+    font-size:48px;
+    padding:.2em .5em;
+    border:none;
+    border-radius:12px;
+    background:#2e7d32;
+    color:#fff;
+    cursor:pointer;
+}
+.run-btn:disabled{ background:#8e8e8e; cursor:not-allowed; }
 
 .keyboard{
     display:flex;
@@ -46,10 +65,7 @@ body{
     user-select:none;
 }
 
-.row{
-    display:flex;
-    gap:.5rem;
-}
+.row{ display:flex; gap:.5rem; }
 
 .key{
     flex:1;
@@ -65,41 +81,41 @@ body{
     justify-content:center;
     font-weight:bold;
 }
-
-.key.wide{ flex:2;}
-.key.extra-wide{ flex:5;}
-
-.key:active,
-.key:focus{
-    background:#333;
-    outline:3px solid #fdd835;
-}
+.key.wide{ flex:2; }
+.key.extra-wide{ flex:5; }
+.key:active,.key:focus{ background:#333; outline:3px solid #fdd835; }
 
 @media (max-width:600px){
-    :root{
-        --key-height: 80px;
-        --key-font-size: 60px;
-    }
-    .display{
-        font-size:36px;
-    }
+    :root{ --key-height: 80px; --key-font-size: 60px; }
+    .display, .output{ font-size:24px; }
+    .run-btn{ font-size:36px; }
 }
 </style>
 </head>
 <body>
-    <div id="display" class="display" aria-label="Área de exibição do texto" contenteditable="true"></div>
+    <div id="display" class="display" aria-label="Área de exibição do texto (código Python)" contenteditable="true" spellcheck="false"></div>
+
+    <div class="controls"><button id="runBtn" class="run-btn" disabled>Carregando Python…</button></div>
+
+    <pre id="output" class="output" aria-label="Saída do programa"></pre>
 
     <div class="keyboard" aria-label="Teclado virtual">
         <div class="row" id="row1"></div>
         <div class="row" id="row2"></div>
         <div class="row" id="row3"></div>
         <div class="row" id="row4"></div>
-        <div class="row">
-            <button class="key extra-wide" data-key="SPACE" aria-label="Espaço">Espaço</button>
-        </div>
+        <div class="row"><button class="key extra-wide" data-key="SPACE" aria-label="Espaço">Espaço</button></div>
     </div>
 
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
 <script>
+let pyodide;
+(async () => {
+    pyodide = await loadPyodide();
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('runBtn').textContent = 'Run 🐍';
+})();
+
 const layout = [
     ["1","2","3","4","5","6","7","8","9","0","APAGAR"],
     ["Q","W","E","R","T","Y","U","I","O","P"],
@@ -112,45 +128,72 @@ function createKey(label){
     btn.classList.add('key');
     btn.textContent = label;
     btn.dataset.key = label;
-    if(label === 'APAGAR' || label === 'ENTER'){
-        btn.classList.add('wide');
-    }
+    if(label === 'BACKSPACE' || label === 'ENTER') btn.classList.add('wide');
     return btn;
 }
 
 layout.forEach((row,i)=>{
     const rowDiv = document.getElementById('row'+(i+1));
-    row.forEach(key=>{
-        rowDiv.appendChild(createKey(key));
-    });
+    row.forEach(key=> rowDiv.appendChild(createKey(key)) );
 });
 
 const display = document.getElementById('display');
 
 function insert(char){
+    display.focus();
+    const sel = window.getSelection();
+    const range = sel.getRangeAt(0);
+
     if(char === 'APAGAR'){
-        display.textContent = display.textContent.slice(0,-1);
-    }else if(char === 'ENTER'){
-        display.textContent += '\n';
-    }else if(char === 'SPACE'){
-        display.textContent += ' ';
-    }else{
-        display.textContent += char;
+        if(!range.collapsed) {
+            range.deleteContents();
+        } else {
+            range.setStart(range.startContainer, range.startOffset - 1);
+            range.deleteContents();
+        }
     }
+    else if(char === 'ENTER'){
+        const br = document.createElement("br");
+        range.insertNode(br);
+        range.setStartAfter(br);
+    }
+    else if(char === 'SPACE'){
+        const space = document.createTextNode(" ");
+        range.insertNode(space);
+        range.setStartAfter(space);
+    }
+    else{
+        const text = document.createTextNode(char.toLowerCase());
+        range.insertNode(text);
+        range.setStartAfter(text);
+    }
+    sel.removeAllRanges();
+    sel.addRange(range);
 }
 
-document.querySelectorAll('.key').forEach(key=>{
-    key.addEventListener('click', e=>{
-        insert(e.currentTarget.dataset.key);
-    });
+document.querySelectorAll('.key').forEach(btn => btn.addEventListener('click', e => insert(e.currentTarget.dataset.key)));
+
+window.addEventListener('keydown', e => {
+    e.preventDefault();
+    if(e.key === 'Backspace')      insert('APAGAR');
+    else if(e.key === 'Enter')     insert('ENTER');
+    else if(e.key === ' ')         insert('SPACE');
+    else if(e.key.length === 1)    insert(e.key);
 });
 
-window.addEventListener('keydown', e=>{
-    if(e.key === 'Backspace') insert('APAGAR');
-    else if(e.key === 'Enter') insert('ENTER');
-    else if(e.key === ' ') insert('SPACE');
-    else if(e.key.length === 1){
-        insert(e.key);
+const runBtn = document.getElementById('runBtn');
+const output = document.getElementById('output');
+
+runBtn.addEventListener('click', async () => {
+    if(!pyodide) return;
+    const code = display.innerText;
+    output.textContent = 'Executando…';
+    try{
+        pyodide.globals.set('user_code', code);
+        await pyodide.runPythonAsync(`import sys, io, contextlib\n_buffer = io.StringIO()\nwith contextlib.redirect_stdout(_buffer), contextlib.redirect_stderr(_buffer):\n    exec(user_code, {})\nresult_out = _buffer.getvalue()`);
+        output.textContent = pyodide.globals.get('result_out') || '(sem saída)';
+    }catch(err){
+        output.textContent = err;
     }
 });
 </script>
