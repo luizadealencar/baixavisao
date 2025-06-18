@@ -109,6 +109,7 @@ body{
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
 <script>
+/**********************  INICIALIZA PYODIDE  ************************/
 let pyodide;
 (async () => {
     pyodide = await loadPyodide();
@@ -116,6 +117,7 @@ let pyodide;
     document.getElementById('runBtn').textContent = 'Run 🐍';
 })();
 
+/**********************  CONFIGURA TECLADO  ************************/
 const layout = [
     ["1","2","3","4","5","6","7","8","9","0","APAGAR"],
     ["Q","W","E","R","T","Y","U","I","O","P"],
@@ -128,7 +130,7 @@ function createKey(label){
     btn.classList.add('key');
     btn.textContent = label;
     btn.dataset.key = label;
-    if(label === 'BACKSPACE' || label === 'ENTER') btn.classList.add('wide');
+    if(label === 'APAGAR' || label === 'BACKSPACE' || label === 'ENTER') btn.classList.add('wide');
     return btn;
 }
 
@@ -137,6 +139,7 @@ layout.forEach((row,i)=>{
     row.forEach(key=> rowDiv.appendChild(createKey(key)) );
 });
 
+/**********************  INSERÇÃO DE TEXTO  ************************/
 const display = document.getElementById('display');
 
 function insert(char){
@@ -145,20 +148,26 @@ function insert(char){
     const range = sel.getRangeAt(0);
 
     if(char === 'APAGAR'){
-        if(!range.collapsed) {
+        if(!range.collapsed){
             range.deleteContents();
-        } else {
+        } else if(range.startOffset > 0){
             range.setStart(range.startContainer, range.startOffset - 1);
             range.deleteContents();
         }
     }
     else if(char === 'ENTER'){
-        const br = document.createElement("br");
+        const br = document.createElement('br');
         range.insertNode(br);
-        range.setStartAfter(br);
+        // move o cursor para depois da quebra de linha
+        const newRange = document.createRange();
+        newRange.setStartAfter(br);
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+        return;
     }
     else if(char === 'SPACE'){
-        const space = document.createTextNode(" ");
+        const space = document.createTextNode(' ');
         range.insertNode(space);
         range.setStartAfter(space);
     }
@@ -171,22 +180,38 @@ function insert(char){
     sel.addRange(range);
 }
 
+// Clique nas teclas virtuais
 document.querySelectorAll('.key').forEach(btn => btn.addEventListener('click', e => insert(e.currentTarget.dataset.key)));
 
+// Teclado físico
 window.addEventListener('keydown', e => {
-    e.preventDefault();
-    if(e.key === 'Backspace')      insert('APAGAR');
-    else if(e.key === 'Enter')     insert('ENTER');
-    else if(e.key === ' ')         insert('SPACE');
-    else if(e.key.length === 1)    insert(e.key);
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return; // navegação natural
+
+    if(e.key === 'Backspace'){
+        e.preventDefault();
+        insert('APAGAR');
+    }
+    else if(e.key === 'Enter'){
+        e.preventDefault();
+        insert('ENTER');
+    }
+    else if(e.key === ' '){
+        e.preventDefault();
+        insert('SPACE');
+    }
+    else if(e.key.length === 1){
+        e.preventDefault();
+        insert(e.key);
+    }
 });
 
+/**********************  EXECUTA CÓDIGO PYTHON  ************************/
 const runBtn = document.getElementById('runBtn');
 const output = document.getElementById('output');
 
 runBtn.addEventListener('click', async () => {
     if(!pyodide) return;
-    const code = display.innerText;
+    const code = display.innerText.replace(/\u200B/g, '');
     output.textContent = 'Executando…';
     try{
         pyodide.globals.set('user_code', code);
